@@ -473,6 +473,9 @@ class Classify(nn.Module):
             nn.Dropout(p=0.0, inplace=True)
         )
         
+        self.mlp_net = nn.Sequential(
+        )
+        
         self.linear = nn.Linear(c_, c2)  # to x(b,c2)
 
     def forward(self, x: list[torch.Tensor] | torch.Tensor) -> torch.Tensor | tuple:
