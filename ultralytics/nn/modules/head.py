@@ -476,8 +476,6 @@ class Classify(nn.Module):
         self.mlp_net = nn.Sequential(
             nn.Linear(1280, 512),
             nn.SiLU(),
-            nn.Linear(512, 512),
-            nn.SiLU()
         )
         self.linear = nn.Linear(512, c2)  # to x(b,c2)
 
