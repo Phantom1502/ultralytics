@@ -130,7 +130,7 @@ class Detect(nn.Module):
         Perform forward pass of the v10Detect module.
 
         Args:
-            x (List[torch.Tensor]): Input feature maps from different levels.
+            x (list[torch.Tensor]): Input feature maps from different levels.
 
         Returns:
             outputs (dict | tuple): Training mode returns dict with one2many and one2one outputs.
@@ -154,7 +154,7 @@ class Detect(nn.Module):
         Decode predicted bounding boxes and class probabilities based on multiple-level feature maps.
 
         Args:
-            x (List[torch.Tensor]): List of feature maps from different detection layers.
+            x (list[torch.Tensor]): List of feature maps from different detection layers.
 
         Returns:
             (torch.Tensor): Concatenated tensor of decoded bounding boxes and class probabilities.
@@ -162,7 +162,7 @@ class Detect(nn.Module):
         # Inference path
         shape = x[0].shape  # BCHW
         x_cat = torch.cat([xi.view(shape[0], self.no, -1) for xi in x], 2)
-        if self.format != "imx" and (self.dynamic or self.shape != shape):
+        if self.dynamic or self.shape != shape:
             self.anchors, self.strides = (x.transpose(0, 1) for x in make_anchors(x, self.stride, 0.5))
             self.shape = shape
 
@@ -182,8 +182,6 @@ class Detect(nn.Module):
             dbox = self.decode_bboxes(self.dfl(box) * norm, self.anchors.unsqueeze(0) * norm[:, :2])
         else:
             dbox = self.decode_bboxes(self.dfl(box), self.anchors.unsqueeze(0)) * self.strides
-        if self.export and self.format == "imx":
-            return dbox.transpose(1, 2), cls.sigmoid().permute(0, 2, 1)
         return torch.cat((dbox, cls.sigmoid()), 1)
 
     def bias_init(self):
@@ -387,8 +385,6 @@ class Pose(Detect):
         if self.training:
             return x, kpt
         pred_kpt = self.kpts_decode(bs, kpt)
-        if self.export and self.format == "imx":
-            return (*x, pred_kpt.permute(0, 2, 1))
         return torch.cat([x, pred_kpt], 1) if self.export else (torch.cat([x[0], pred_kpt], 1), (x[1], kpt))
 
     def kpts_decode(self, bs: int, kpts: torch.Tensor) -> torch.Tensor:
@@ -463,28 +459,16 @@ class Classify(nn.Module):
         """
         super().__init__()
         c_ = 1280  # efficientnet_b0 size
-        #self.conv = Conv(c1, c_, k, s, p, g)
-        #self.pool = nn.AdaptiveAvgPool2d(1)  # to x(b,c_,1,1)
-        #self.drop = nn.Dropout(p=0.0, inplace=True)
-        
-        self.pool = nn.Sequential(
-            Conv(c1, c_, k, s, p, g),
-            nn.AdaptiveAvgPool2d(1),
-            nn.Dropout(p=0.0, inplace=True)
-        )
-        
-        self.mlp_net = nn.Sequential(
-        )
-        
+        self.conv = Conv(c1, c_, k, s, p, g)
+        self.pool = nn.AdaptiveAvgPool2d(1)  # to x(b,c_,1,1)
+        self.drop = nn.Dropout(p=0.0, inplace=True)
         self.linear = nn.Linear(c_, c2)  # to x(b,c2)
 
     def forward(self, x: list[torch.Tensor] | torch.Tensor) -> torch.Tensor | tuple:
         """Perform forward pass of the YOLO model on input image data."""
         if isinstance(x, list):
             x = torch.cat(x, 1)
-            
-        x = self.linear(self.mlp_net(self.pool(x).flatten(1)))
-        #x = self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
+        x = self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
         if self.training:
             return x
         y = x.softmax(1)  # get final output
@@ -997,7 +981,7 @@ class RTDETRDecoder(nn.Module):
         Run the forward pass of the module, returning bounding box and classification scores for the input.
 
         Args:
-            x (List[torch.Tensor]): List of feature maps from the backbone.
+            x (list[torch.Tensor]): List of feature maps from the backbone.
             batch (dict, optional): Batch information for training.
 
         Returns:
@@ -1087,7 +1071,7 @@ class RTDETRDecoder(nn.Module):
         Process and return encoder inputs by getting projection features from input and concatenating them.
 
         Args:
-            x (List[torch.Tensor]): List of feature maps from the backbone.
+            x (list[torch.Tensor]): List of feature maps from the backbone.
 
         Returns:
             feats (torch.Tensor): Processed features.
